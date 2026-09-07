@@ -1,19 +1,26 @@
 import yfinance as yf
 
 def fetch_yahoo(symbol):
+    """Fetch metrics for a single stock using direct info fields."""
     try:
         t = yf.Ticker(symbol)
         info = t.info or {}
 
-        # 1. Price & Liquidity
-        price = info.get("currentPrice") or info.get("regularMarketPrice")
+        # 1. Price with Off-Hours / Pre-Market Fallbacks
+        price = (
+            info.get("regularMarketPrice")
+            or info.get("currentPrice")
+            or info.get("postMarketPrice")
+            or info.get("previousClose")
+        )
+
         volume = info.get("volume") or info.get("regularMarketVolume")
         avg_volume = info.get("averageVolume") or info.get("averageDailyVolume3Month")
 
-        # 2. Relative Volume (RVOL) - High volume surges
+        # 2. Relative Volume (RVOL)
         rvol = (volume / avg_volume) if (volume and avg_volume and avg_volume > 0) else None
 
-        # 3. Fast Moving Averages (directly from info API - zero extra network calls)
+        # 3. Moving Averages pulled directly from info (zero extra network calls)
         ma50 = info.get("fiftyDayAverage")
         ma200 = info.get("twoHundredDayAverage")
 
