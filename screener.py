@@ -57,12 +57,11 @@ def build_metrics(symbol, quote):
 
 
 def run_screen(tickers=None):
-    """Fetch tickers async, filter by price ($0.001 - $35), score them, and return top 20 matches."""
-
     universe = tickers if tickers is not None else load_tickers()
+    print(f"DEBUG: Loaded {len(universe)} tickers from universe.")
 
-    # Async fetch all Yahoo JSON quotes concurrently (~10-15 seconds)
     results = asyncio.run(fetch_batch(universe))
+    print(f"DEBUG: Fetched {len(results)} results from Yahoo.")
 
     scored = []
 
@@ -73,24 +72,14 @@ def run_screen(tickers=None):
         metrics = build_metrics(symbol, quote)
         price = metrics.get("price")
 
-        # ----------------------------------------------------
-        # PRICE FILTER: Strictly enforce $0.001 to $35.00
-        # ----------------------------------------------------
         if price is None or not (0.001 <= price <= 35.0):
             continue
 
-        try:
-            score = score_stock(metrics)
-            if score is None:
-                score = 0.0
-            metrics["score"] = round(score, 2)
-            scored.append(metrics)
-        except Exception:
-            metrics["score"] = 0.0
-            scored.append(metrics)
+        score = score_stock(metrics)
+        metrics["score"] = round(score, 2)
+        scored.append(metrics)
 
-    # Sort by score descending
+    print(f"DEBUG: Scored {len(scored)} stocks within price range.")
+
     scored.sort(key=lambda x: x["score"], reverse=True)
-
-    # Return top 20 matches
     return scored[:20]
