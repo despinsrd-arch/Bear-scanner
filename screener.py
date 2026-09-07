@@ -5,10 +5,10 @@ from universe import load_tickers
 
 
 def build_metrics(symbol, quote):
-    """Extract metrics from Yahoo JSON quote with bulletproof price resolution."""
+    """Extract metrics from Yahoo JSON quote with flexible price resolution."""
 
-    # Search all possible price locations in Yahoo JSON payload
-    price = (
+    # Handle cases where quote might wrap price or store as float/int/str
+    raw_price = (
         quote.get("regularMarketPrice")
         or quote.get("currentPrice")
         or quote.get("postMarketPrice")
@@ -18,10 +18,14 @@ def build_metrics(symbol, quote):
         or quote.get("bid")
     )
 
+    try:
+        price = float(raw_price) if raw_price is not None else None
+    except (ValueError, TypeError):
+        price = None
+
     volume = quote.get("regularMarketVolume") or quote.get("volume") or 0
     avg_vol = quote.get("averageDailyVolume3Month") or quote.get("averageVolume") or 1
 
-    # Compute Relative Volume (RVOL)
     rvol = (volume / avg_vol) if (avg_vol > 0) else None
 
     metrics = {
@@ -44,40 +48,29 @@ def build_metrics(symbol, quote):
         "52w_low": quote.get("fiftyTwoWeekLow"),
     }
 
-    # Compute EV/EBITDA safely
-    ev = quote.get("enterpriseValue")
-    ebitda = quote.get("ebitda")
-
-    if ev and ebitda:
-        try:
-            metrics["ev_ebitda"] = ev / ebitda
-        except Exception:
-            metrics["ev_ebitda"] = None
-    else:
-        metrics["ev_ebitda"] = None
-
     return metrics
 
 
 async def run_screen(tickers=None):
     """Fetch tickers async, filter by price ($0.001 - $35), score them, and return top 20 matches."""
 
-    # 1. Load ticker universe
     universe = tickers if tickers is not None else load_tickers()
     print(f"DEBUG: Loaded {len(universe)} tickers from universe.")
 
-    # 2. Directly await async fetch (avoids asyncio.run conflict inside FastAPI)
     results = await fetch_batch(universe)
     print(f"DEBUG: Fetched {len(results)} results from Yahoo.")
 
-    # Log sample raw quote payload to verify Yahoo JSON keys in Render logs
+    # ----------------------------------------------------
+    # PRINT SAMPLE QUOTE TO LOGS TO SEE EXACT YAHOO KEYS
+    # ----------------------------------------------------
     valid_quotes = [q for s, q in results if q is not None]
     if valid_quotes:
-        print(f"DEBUG Sample Quote Keys: {list(valid_quotes[0].keys())[:10]}")
+        sample = valid_quotes[0]
+        print(f"DEBUG SAMPLE KEYS: {list(sample.keys())}")
+        print(f"DEBUG SAMPLE PRICE VALUES: regularMarketPrice={sample.get('regularMarketPrice')}, currentPrice={sample.get('currentPrice')}, postMarketPrice={sample.get('postMarketPrice')}, previousClose={sample.get('previousClose')}")
 
     scored = []
 
-    # 3. Filter and score stocks
     for symbol, quote in results:
         if not quote:
             continue
@@ -101,8 +94,5 @@ async def run_screen(tickers=None):
 
     print(f"DEBUG: Scored {len(scored)} stocks within price range.")
 
-    # 4. Sort by score descending
     scored.sort(key=lambda x: x["score"], reverse=True)
-
-    # 5. Return top 20 matches
     return scored[:20]
