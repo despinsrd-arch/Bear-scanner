@@ -1,21 +1,38 @@
 import asyncio
+import random
 from async_fetch import fetch_batch
 from scoring import score_stock
 from universe import load_tickers
 
 
 def build_metrics(symbol, quote):
-    """Extract metrics from Yahoo JSON quote and compute EV/EBITDA."""
+    """Extract price, fundamentals, moving averages, and volume metrics from quote."""
+
+    price = quote.get("regularMarketPrice") or quote.get("currentPrice")
+    volume = quote.get("regularMarketVolume") or quote.get("volume")
+    avg_vol = quote.get("averageDailyVolume3Month") or quote.get("averageVolume")
+
+    # Compute Relative Volume (RVOL)
+    rvol = (volume / avg_vol) if (volume and avg_vol and avg_vol > 0) else None
 
     metrics = {
         "symbol": symbol,
-        "price": quote.get("regularMarketPrice"),
-        "volume": quote.get("regularMarketVolume"),
-        "avg_volume": quote.get("averageDailyVolume3Month"),
+        "price": price,
+        "volume": volume,
+        "avg_volume": avg_vol,
+        "rvol": round(rvol, 2) if rvol else None,
         "pe": quote.get("trailingPE"),
         "peg": quote.get("pegRatio"),
+        "roe": quote.get("returnOnEquity"),
+        "net_margin": quote.get("profitMargins"),
+        "fcf": quote.get("freeCashflow"),
+        "market_cap": quote.get("marketCap"),
+        "float": quote.get("floatShares"),
+        "short_ratio": quote.get("shortRatio"),
         "ma50": quote.get("fiftyDayAverage"),
         "ma200": quote.get("twoHundredDayAverage"),
+        "52w_high": quote.get("fiftyTwoWeekHigh"),
+        "52w_low": quote.get("fiftyTwoWeekLow"),
     }
 
     # Compute EV/EBITDA safely
@@ -36,11 +53,15 @@ def build_metrics(symbol, quote):
 def run_screen(tickers=None):
     """Fetch tickers async, filter by price ($0.001 - $35), score them, and return top matches."""
 
-    # Use passed tickers or fallback to loading full universe
+    # 1. Use passed tickers or fallback to loading full universe
     universe = tickers if tickers is not None else load_tickers()
 
-    # Async fetch all Yahoo JSON quotes
-    results = asyncio.run(fetch_batch(universe))
+    # 2. SHUFFLE TICKERS: Ensures we sample randomly from A to Z every run
+    universe_copy = list(universe)
+    random.shuffle(universe_copy)
+
+    # 3. Async fetch all Yahoo JSON quotes
+    results = asyncio.run(fetch_batch(universe_copy))
 
     scored = []
 
