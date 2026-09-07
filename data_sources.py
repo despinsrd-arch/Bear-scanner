@@ -1,35 +1,41 @@
 import yfinance as yf
-import pandas as pd
 
 def fetch_yahoo(symbol):
-    t = yf.Ticker(symbol)
-    info = t.info
+    try:
+        t = yf.Ticker(symbol)
+        info = t.info or {}
 
-    price = info.get("currentPrice") or info.get("regularMarketPrice")
-    roe = info.get("returnOnEquity")
-    net_margin = info.get("netMargins")
-    fcf = info.get("freeCashflow")
-    pe = info.get("trailingPE")
-    peg = info.get("pegRatio")
-    ev_ebitda = info.get("enterpriseToEbitda")
-    volume = info.get("volume")
-    avg_volume = info.get("averageVolume")
+        # 1. Price & Liquidity
+        price = info.get("currentPrice") or info.get("regularMarketPrice")
+        volume = info.get("volume") or info.get("regularMarketVolume")
+        avg_volume = info.get("averageVolume") or info.get("averageDailyVolume3Month")
 
-    hist = t.history(period="6mo")
-    ma50 = hist["Close"].rolling(50).mean().iloc[-1] if len(hist) >= 50 else None
-    ma200 = hist["Close"].rolling(200).mean().iloc[-1] if len(hist) >= 200 else None
+        # 2. Relative Volume (RVOL) - High volume surges
+        rvol = (volume / avg_volume) if (volume and avg_volume and avg_volume > 0) else None
 
-    return {
-        "symbol": symbol,
-        "price": price,
-        "roe": roe,
-        "net_margin": net_margin,
-        "fcf": fcf,
-        "pe": pe,
-        "peg": peg,
-        "ev_ebitda": ev_ebitda,
-        "volume": volume,
-        "avg_volume": avg_volume,
-        "ma50": ma50,
-        "ma200": ma200,
-    }
+        # 3. Fast Moving Averages (directly from info API - zero extra network calls)
+        ma50 = info.get("fiftyDayAverage")
+        ma200 = info.get("twoHundredDayAverage")
+
+        return {
+            "symbol": symbol,
+            "price": price,
+            "roe": info.get("returnOnEquity"),
+            "net_margin": info.get("profitMargins"),
+            "fcf": info.get("freeCashflow"),
+            "pe": info.get("trailingPE"),
+            "peg": info.get("pegRatio"),
+            "ev_ebitda": info.get("enterpriseToEbitda"),
+            "volume": volume,
+            "avg_volume": avg_volume,
+            "rvol": round(rvol, 2) if rvol else None,
+            "market_cap": info.get("marketCap"),
+            "float": info.get("floatShares"),
+            "short_ratio": info.get("shortRatio"),
+            "ma50": ma50,
+            "ma200": ma200,
+            "52w_high": info.get("fiftyTwoWeekHigh"),
+            "52w_low": info.get("fiftyTwoWeekLow"),
+        }
+    except Exception:
+        return None
