@@ -7,7 +7,7 @@ from screener import run_screen
 app = FastAPI()
 
 # ---------------------------
-# HOMEPAGE (Vibrant Neon Dashboard UI)
+# HOMEPAGE (Vibrant Neon Dashboard with Live Chart Links)
 # ---------------------------
 @app.get("/", response_class=HTMLResponse)
 def home():
@@ -173,6 +173,13 @@ def home():
                 gap: 1.5rem;
             }
 
+            /* Clickable Card Link Styling */
+            .card-link {
+                text-decoration: none;
+                color: inherit;
+                display: block;
+            }
+
             .card {
                 background: var(--bg-card);
                 backdrop-filter: blur(16px);
@@ -182,6 +189,7 @@ def home():
                 transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
                 position: relative;
                 overflow: hidden;
+                cursor: pointer;
             }
 
             .card::before {
@@ -198,8 +206,8 @@ def home():
 
             .card:hover {
                 transform: translateY(-6px);
-                border-color: rgba(0, 242, 254, 0.4);
-                box-shadow: 0 12px 30px rgba(0, 242, 254, 0.15);
+                border-color: rgba(0, 242, 254, 0.5);
+                box-shadow: 0 12px 30px rgba(0, 242, 254, 0.25);
             }
 
             .card:hover::before {
@@ -213,12 +221,29 @@ def home():
                 margin-bottom: 1.2rem;
             }
 
+            .symbol-container {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+            }
+
             .symbol {
                 font-size: 1.5rem;
                 font-weight: 800;
                 letter-spacing: 0.5px;
                 color: #fff;
                 text-shadow: 0 0 10px rgba(255, 255, 255, 0.2);
+            }
+
+            .external-icon {
+                font-size: 0.85rem;
+                color: var(--accent-cyan);
+                opacity: 0.7;
+                transition: opacity 0.2s ease;
+            }
+
+            .card:hover .external-icon {
+                opacity: 1;
             }
 
             .score-badge {
@@ -265,6 +290,16 @@ def home():
                 padding: 2px 8px;
                 border-radius: 6px;
                 border: 1px solid rgba(255, 0, 122, 0.3);
+            }
+
+            .chart-hint {
+                margin-top: 10px;
+                text-align: center;
+                font-size: 0.78rem;
+                font-weight: 700;
+                color: var(--accent-cyan);
+                letter-spacing: 0.5px;
+                opacity: 0.8;
             }
 
             .empty-state {
@@ -359,25 +394,34 @@ def home():
                             const volFormatted = stock.volume ? stock.volume.toLocaleString() : 'N/A';
                             const rvolFormatted = stock.rvol ? stock.rvol + 'x' : 'N/A';
 
+                            // External TradingView chart link for each ticker
+                            const chartUrl = `https://www.tradingview.com/symbols/${stock.symbol}/`;
+
                             const cardHtml = `
-                                <div class="card">
-                                    <div class="card-header">
-                                        <div class="symbol">${stock.symbol}</div>
-                                        <div class="score-badge">Score: ${stock.score}</div>
+                                <a href="${chartUrl}" target="_blank" rel="noopener noreferrer" class="card-link">
+                                    <div class="card">
+                                        <div class="card-header">
+                                            <div class="symbol-container">
+                                                <div class="symbol">${stock.symbol}</div>
+                                                <span class="external-icon">↗</span>
+                                            </div>
+                                            <div class="score-badge">Score: ${stock.score}</div>
+                                        </div>
+                                        <div class="metric-row">
+                                            <span class="metric-label">Current Price</span>
+                                            <span class="price-val">${priceFormatted}</span>
+                                        </div>
+                                        <div class="metric-row">
+                                            <span class="metric-label">Volume</span>
+                                            <span class="vol-val">${volFormatted}</span>
+                                        </div>
+                                        <div class="metric-row">
+                                            <span class="metric-label">Relative Vol (RVOL)</span>
+                                            <span class="rvol-val">${rvolFormatted}</span>
+                                        </div>
+                                        <div class="chart-hint">📈 CLICK TO OPEN TRADINGVIEW CHART</div>
                                     </div>
-                                    <div class="metric-row">
-                                        <span class="metric-label">Current Price</span>
-                                        <span class="price-val">${priceFormatted}</span>
-                                    </div>
-                                    <div class="metric-row">
-                                        <span class="metric-label">Volume</span>
-                                        <span class="vol-val">${volFormatted}</span>
-                                    </div>
-                                    <div class="metric-row">
-                                        <span class="metric-label">Relative Vol (RVOL)</span>
-                                        <span class="rvol-val">${rvolFormatted}</span>
-                                    </div>
-                                </div>`;
+                                </a>`;
                             grid.innerHTML += cardHtml;
                         });
                         statusText.innerText = `Scan success: Rendered top ${data.length} momentum stocks!`;
