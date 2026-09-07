@@ -1,14 +1,20 @@
 import asyncio
-import random
 from async_fetch import fetch_batch
 from scoring import score_stock
 from universe import load_tickers
 
 
 def build_metrics(symbol, quote):
-    """Extract price, fundamentals, moving averages, and volume metrics from quote."""
+    """Extract metrics from Yahoo JSON quote with price fallback logic."""
 
-    price = quote.get("regularMarketPrice") or quote.get("currentPrice")
+    # Price fallback logic for market off-hours/pre-market
+    price = (
+        quote.get("regularMarketPrice")
+        or quote.get("currentPrice")
+        or quote.get("postMarketPrice")
+        or quote.get("previousClose")
+    )
+
     volume = quote.get("regularMarketVolume") or quote.get("volume")
     avg_vol = quote.get("averageDailyVolume3Month") or quote.get("averageVolume")
 
@@ -51,17 +57,12 @@ def build_metrics(symbol, quote):
 
 
 def run_screen(tickers=None):
-    """Fetch tickers async, filter by price ($0.001 - $35), score them, and return top matches."""
+    """Fetch tickers async, filter by price ($0.001 - $35), score them, and return top 20 matches."""
 
-    # 1. Use passed tickers or fallback to loading full universe
     universe = tickers if tickers is not None else load_tickers()
 
-    # 2. SHUFFLE TICKERS: Ensures we sample randomly from A to Z every run
-    universe_copy = list(universe)
-    random.shuffle(universe_copy)
-
-    # 3. Async fetch all Yahoo JSON quotes
-    results = asyncio.run(fetch_batch(universe_copy))
+    # Async fetch all Yahoo JSON quotes concurrently (~10-15 seconds)
+    results = asyncio.run(fetch_batch(universe))
 
     scored = []
 
@@ -73,21 +74,23 @@ def run_screen(tickers=None):
         price = metrics.get("price")
 
         # ----------------------------------------------------
-        # PRICE FILTER: Only allow stocks between $0.001 and $35.00
+        # PRICE FILTER: Strictly enforce $0.001 to $35.00
         # ----------------------------------------------------
         if price is None or not (0.001 <= price <= 35.0):
             continue
 
         try:
             score = score_stock(metrics)
-            if score is not None:
-                metrics["score"] = round(score, 2)
-                scored.append(metrics)
+            if score is None:
+                score = 0.0
+            metrics["score"] = round(score, 2)
+            scored.append(metrics)
         except Exception:
-            continue
+            metrics["score"] = 0.0
+            scored.append(metrics)
 
     # Sort by score descending
     scored.sort(key=lambda x: x["score"], reverse=True)
 
-    # Return top 20 matches in price range
+    # Return top 20 matches
     return scored[:20]
