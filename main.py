@@ -1,8 +1,8 @@
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse
 
-# Import your screener function
-from screener import run_screen   # <-- make sure this matches your actual file/function name
+# Import your async screener function
+from screener import run_screen
 
 app = FastAPI()
 
@@ -34,6 +34,8 @@ def home():
                     border-radius: 6px;
                     margin-top: 20px;
                     box-shadow: 0 0 10px rgba(0,0,0,0.1);
+                    max-height: 500px;
+                    overflow-y: auto;
                 }
             </style>
         </head>
@@ -46,9 +48,13 @@ def home():
             <script>
                 async function runScan() {
                     document.getElementById('results').innerText = "Running scan...";
-                    const res = await fetch('/screen');
-                    const data = await res.json();
-                    document.getElementById('results').innerText = JSON.stringify(data, null, 2);
+                    try {
+                        const res = await fetch('/screen');
+                        const data = await res.json();
+                        document.getElementById('results').innerText = JSON.stringify(data, null, 2);
+                    } catch (err) {
+                        document.getElementById('results').innerText = "Error running scan: " + err;
+                    }
                 }
             </script>
         </body>
@@ -59,8 +65,7 @@ def home():
 # SCREENER ENDPOINT
 # ---------------------------
 @app.get("/screen")
-def screen():
-    results = run_screen()
+async def screen():
+    results = await run_screen()
     return JSONResponse(content=results)
-
 
