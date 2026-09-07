@@ -5,21 +5,24 @@ from universe import load_tickers
 
 
 def build_metrics(symbol, quote):
-    """Extract metrics from Yahoo JSON quote with price fallback logic."""
+    """Extract metrics from Yahoo JSON quote with bulletproof price resolution."""
 
-    # Price fallback logic for market off-hours/pre-market
+    # Search all possible price locations in Yahoo JSON payload
     price = (
         quote.get("regularMarketPrice")
         or quote.get("currentPrice")
         or quote.get("postMarketPrice")
+        or quote.get("preMarketPrice")
         or quote.get("previousClose")
+        or quote.get("ask")
+        or quote.get("bid")
     )
 
-    volume = quote.get("regularMarketVolume") or quote.get("volume")
-    avg_vol = quote.get("averageDailyVolume3Month") or quote.get("averageVolume")
+    volume = quote.get("regularMarketVolume") or quote.get("volume") or 0
+    avg_vol = quote.get("averageDailyVolume3Month") or quote.get("averageVolume") or 1
 
     # Compute Relative Volume (RVOL)
-    rvol = (volume / avg_vol) if (volume and avg_vol and avg_vol > 0) else None
+    rvol = (volume / avg_vol) if (avg_vol > 0) else None
 
     metrics = {
         "symbol": symbol,
@@ -57,14 +60,19 @@ def build_metrics(symbol, quote):
 
 
 def run_screen(tickers=None):
+    """Fetch tickers async, filter by price ($0.001 - $35), score them, and return top 20 matches."""
+
+    # 1. Load ticker universe
     universe = tickers if tickers is not None else load_tickers()
     print(f"DEBUG: Loaded {len(universe)} tickers from universe.")
 
+    # 2. Async fetch all Yahoo JSON quotes concurrently (~10-15 seconds)
     results = asyncio.run(fetch_batch(universe))
     print(f"DEBUG: Fetched {len(results)} results from Yahoo.")
 
     scored = []
 
+    # 3. Filter and score stocks
     for symbol, quote in results:
         if not quote:
             continue
@@ -72,14 +80,24 @@ def run_screen(tickers=None):
         metrics = build_metrics(symbol, quote)
         price = metrics.get("price")
 
+        # PRICE FILTER: Only allow stocks between $0.001 and $35.00
         if price is None or not (0.001 <= price <= 35.0):
             continue
 
-        score = score_stock(metrics)
-        metrics["score"] = round(score, 2)
-        scored.append(metrics)
+        try:
+            score = score_stock(metrics)
+            if score is None:
+                score = 0.0
+            metrics["score"] = round(score, 2)
+            scored.append(metrics)
+        except Exception:
+            metrics["score"] = 0.0
+            scored.append(metrics)
 
     print(f"DEBUG: Scored {len(scored)} stocks within price range.")
 
+    # 4. Sort by score descending
     scored.sort(key=lambda x: x["score"], reverse=True)
+
+    # 5. Return top 20 matches
     return scored[:20]
