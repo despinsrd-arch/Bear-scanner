@@ -1,4 +1,5 @@
 import asyncio
+import random
 from async_fetch import fetch_batch
 from scoring import score_stock
 from universe import load_tickers
@@ -7,7 +8,7 @@ from universe import load_tickers
 def build_metrics(symbol, quote):
     """Extract metrics from Yahoo JSON quote with flexible price resolution."""
 
-    # Handle cases where quote might wrap price or store as float/int/str
+    # Search all possible price locations in Yahoo JSON payload
     raw_price = (
         quote.get("regularMarketPrice")
         or quote.get("currentPrice")
@@ -54,23 +55,31 @@ def build_metrics(symbol, quote):
 async def run_screen(tickers=None):
     """Fetch tickers async, filter by price ($0.001 - $35), score them, and return top 20 matches."""
 
+    # 1. Load ticker universe
     universe = tickers if tickers is not None else load_tickers()
     print(f"DEBUG: Loaded {len(universe)} tickers from universe.")
 
+    # 2. Randomize ticker order in memory on every scan execution
+    random.shuffle(universe)
+
+    # 3. Async fetch all Yahoo JSON quotes concurrently (~10-15 seconds)
     results = await fetch_batch(universe)
     print(f"DEBUG: Fetched {len(results)} results from Yahoo.")
 
-    # ----------------------------------------------------
-    # PRINT SAMPLE QUOTE TO LOGS TO SEE EXACT YAHOO KEYS
-    # ----------------------------------------------------
+    # 4. Debug output to inspect sample quote structure
     valid_quotes = [q for s, q in results if q is not None]
     if valid_quotes:
         sample = valid_quotes[0]
         print(f"DEBUG SAMPLE KEYS: {list(sample.keys())}")
-        print(f"DEBUG SAMPLE PRICE VALUES: regularMarketPrice={sample.get('regularMarketPrice')}, currentPrice={sample.get('currentPrice')}, postMarketPrice={sample.get('postMarketPrice')}, previousClose={sample.get('previousClose')}")
+        print(
+            f"DEBUG SAMPLE PRICE VALUES: regularMarketPrice={sample.get('regularMarketPrice')}, "
+            f"currentPrice={sample.get('currentPrice')}, postMarketPrice={sample.get('postMarketPrice')}, "
+            f"previousClose={sample.get('previousClose')}"
+        )
 
     scored = []
 
+    # 5. Filter and score stocks
     for symbol, quote in results:
         if not quote:
             continue
@@ -84,9 +93,13 @@ async def run_screen(tickers=None):
 
         try:
             score = score_stock(metrics)
-            if score is None:
-                score = 0.0
-            metrics["score"] = round(score, 2)
+            # Dynamic fallback: if fundamental score is 0 or None, rank by RVOL multiplier
+            if not score:
+                vol = metrics.get("volume") or 0
+                avg_vol = metrics.get("avg_volume") or 1
+                score = round((vol / avg_vol) * 10.0, 2) if avg_vol > 0 else 0.0
+
+            metrics["score"] = score
             scored.append(metrics)
         except Exception:
             metrics["score"] = 0.0
@@ -94,5 +107,8 @@ async def run_screen(tickers=None):
 
     print(f"DEBUG: Scored {len(scored)} stocks within price range.")
 
+    # 6. Sort by score descending
     scored.sort(key=lambda x: x["score"], reverse=True)
+
+    # 7. Return top 20 matches
     return scored[:20]
