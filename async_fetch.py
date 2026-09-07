@@ -1,14 +1,14 @@
 import asyncio
 import aiohttp
 
-# Process 100 stocks simultaneously (prevents Yahoo rate limits while staying under 15s)
+# Limit maximum simultaneous connections to prevent rate-limiting
 MAX_CONCURRENT_REQUESTS = 100
 
 async def fetch_quote(session, semaphore, symbol):
     """Fetch raw quote JSON directly from Yahoo Finance API asynchronously."""
     url = f"https://query1.finance.yahoo.com/v7/finance/quote?symbols={symbol}"
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
     }
 
     async with semaphore:
@@ -25,10 +25,10 @@ async def fetch_quote(session, semaphore, symbol):
 
 
 async def fetch_batch(symbols):
-    """Fetch quotes for all 2,766 tickers concurrently in 10-15 seconds."""
+    """Fetch quotes for all tickers concurrently in 10-15 seconds."""
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
     
-    # Use a high-performance shared TCP connection pool
+    # Shared high-performance TCP connection pool
     connector = aiohttp.TCPConnector(limit=MAX_CONCURRENT_REQUESTS, ssl=False)
     
     async with aiohttp.ClientSession(connector=connector) as session:
