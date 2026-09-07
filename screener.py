@@ -59,16 +59,21 @@ def build_metrics(symbol, quote):
     return metrics
 
 
-def run_screen(tickers=None):
+async def run_screen(tickers=None):
     """Fetch tickers async, filter by price ($0.001 - $35), score them, and return top 20 matches."""
 
     # 1. Load ticker universe
     universe = tickers if tickers is not None else load_tickers()
     print(f"DEBUG: Loaded {len(universe)} tickers from universe.")
 
-    # 2. Async fetch all Yahoo JSON quotes concurrently (~10-15 seconds)
-    results = asyncio.run(fetch_batch(universe))
+    # 2. Directly await async fetch (avoids asyncio.run conflict inside FastAPI)
+    results = await fetch_batch(universe)
     print(f"DEBUG: Fetched {len(results)} results from Yahoo.")
+
+    # Log sample raw quote payload to verify Yahoo JSON keys in Render logs
+    valid_quotes = [q for s, q in results if q is not None]
+    if valid_quotes:
+        print(f"DEBUG Sample Quote Keys: {list(valid_quotes[0].keys())[:10]}")
 
     scored = []
 
