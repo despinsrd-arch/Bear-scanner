@@ -33,10 +33,11 @@ def build_metrics(symbol, quote):
     return metrics
 
 
-def run_screen():
-    """Fetch all tickers async, score them, and return the top 20."""
+def run_screen(tickers=None):
+    """Fetch tickers async, filter by price ($0.001 - $35), score them, and return top matches."""
 
-    universe = load_tickers()  # full ticker list
+    # Use passed tickers or fallback to loading full universe
+    universe = tickers if tickers is not None else load_tickers()
 
     # Async fetch all Yahoo JSON quotes
     results = asyncio.run(fetch_batch(universe))
@@ -48,6 +49,13 @@ def run_screen():
             continue
 
         metrics = build_metrics(symbol, quote)
+        price = metrics.get("price")
+
+        # ----------------------------------------------------
+        # PRICE FILTER: Only allow stocks between $0.001 and $35.00
+        # ----------------------------------------------------
+        if price is None or not (0.001 <= price <= 35.0):
+            continue
 
         try:
             score = score_stock(metrics)
@@ -60,5 +68,5 @@ def run_screen():
     # Sort by score descending
     scored.sort(key=lambda x: x["score"], reverse=True)
 
-    # Return top 20
+    # Return top 20 matches in price range
     return scored[:20]
